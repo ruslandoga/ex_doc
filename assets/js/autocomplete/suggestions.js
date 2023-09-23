@@ -28,12 +28,32 @@ const SUGGESTION_CATEGORY = {
  * @param {Number} limit The maximum number of results to return.
  * @returns {Suggestion[]} List of suggestions sorted and limited.
  */
-export function getSuggestions (query, limit = 5) {
+export async function getSuggestions (query, limit = 5) {
   if (isBlank(query)) {
     return []
   }
 
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(
+      () => reject(new Error("Autocomplete request took too long")),
+      100
+    );
+  });
+
+  const remoteSuggestionsPromise = findRemoteSuggestions(query);
+
   const nodes = getSidebarNodes()
+
+  let remoteSuggestions;
+  try {
+    remoteSuggestions = await Promise.race([
+      remoteSuggestionsPromise,
+      timeoutPromise,
+    ]);
+  } catch (error) {
+    remoteSuggestions = [];
+    console.error(error);
+  }
 
   const suggestions = [
     ...findSuggestionsInTopLevelNodes(nodes.modules, query, SUGGESTION_CATEGORY.module),
@@ -45,7 +65,55 @@ export function getSuggestions (query, limit = 5) {
     ...findSuggestionsInSectionsOfNodes(nodes.extras, query, SUGGESTION_CATEGORY.section)
   ].filter(suggestion => suggestion !== null)
 
-  return sort(suggestions).slice(0, limit)
+  return [...sort(suggestions).slice(0, limit), ...remoteSuggestions];
+}
+
+async function findRemoteSuggestions(query) {
+  const params = new URLSearchParams({
+    q: query,
+    packages: "ecto,ecto_sql,db_connection,mint,ecto_ch",
+  });
+
+  const response = await fetch(
+    `https://hexdocs-sqlite-minimal.fly.dev/v0/autocomplete?${params.toString()}`
+  );
+
+  if (!response.ok) {
+    throw new Error("Global search network response was not OK");
+  }
+
+  const data = await response.json();
+  return data.results.map((d) => {
+    var category;
+
+    switch (d.type) {
+      case "module":
+        category = "module";
+        break;
+
+      case "extras":
+        category = "extra";
+        break;
+
+      case "task":
+        category = "mix-task";
+        break;
+
+      default:
+        category = "module-child";
+        break;
+    }
+
+    return {
+      link: `https://hexdocs.pm/${d.package}/${d.ref}`,
+      title: highlightMatches(d.title, query),
+      label: null,
+      description: null,
+      matchQuality: d.rank,
+      deprecated: false,
+      category,
+    };
+  });
 }
 
 /**

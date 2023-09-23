@@ -16,7 +16,7 @@
     <div class="result">
       <h2 class="result-id">
         <a href="{{this.ref}}">
-          <span translate="no">{{this.title}}</span> <small>({{this.type}})</small>
+          {{#if this.package}}<small><code>{{this.package}}</code></small><br>{{/if}}<span translate="no">{{this.title}}</span> <small>({{this.type}})</small>
         </a>
       </h2>
         {{#each excerpts}}

@@ -30,6 +30,9 @@ export function isAutocompleteListOpen () {
   return qs(AUTOCOMPLETE_CONTAINER_SELECTOR).classList.contains('shown')
 }
 
+// Used to avoid race-conditions:
+let requestInFlight = null;
+
 /**
  * Shows autocomplete suggestions for the given term.
  *
@@ -37,15 +40,20 @@ export function isAutocompleteListOpen () {
  *
  * @param {String} searchTerm The term to show suggestions for.
  */
-export function updateAutocompleteList (searchTerm) {
-  state.autocompleteSuggestions = getSuggestions(searchTerm)
+export async function updateAutocompleteList (searchTerm) {
+  let currentRequest = {};
+  requestInFlight = currentRequest;
+
+  state.autocompleteSuggestions = await getSuggestions(searchTerm)
   state.selectedIdx = -1
 
   if (!isBlank(searchTerm)) {
-    renderSuggestions({ term: searchTerm, suggestions: state.autocompleteSuggestions })
-    // Highlight the first option
-    moveAutocompleteSelection(0)
-    showAutocompleteList()
+    if (requestInFlight === currentRequest) {
+      renderSuggestions({ term: searchTerm, suggestions: state.autocompleteSuggestions })
+      // Highlight the first option
+      moveAutocompleteSelection(0)
+      showAutocompleteList()
+    }
   } else {
     hideAutocompleteList()
   }

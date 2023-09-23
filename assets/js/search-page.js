@@ -27,15 +27,67 @@ async function search (value) {
   } else {
     setSearchInputValue(value)
 
+    const globalSearchPromise = globalSearch(value);
+
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(
+        () => reject(new Error("Remote search request took too long")),
+        300
+      );
+    });
+
     const index = await getIndex()
 
     try {
-      const results = searchResultsToDecoratedSearchNodes(index.search(value))
+      const localResults = index.search(value);
+      const results = searchResultsToDecoratedSearchNodes(localResults);
+
+      let globalResults;
+      try {
+        globalResults = await Promise.race([
+          globalSearchPromise,
+          timeoutPromise,
+        ]);
+      } catch (error) {
+        globalResults = [];
+        console.error(error);
+      }
+
+      const mergedResults = [...results, ...globalResults];
+      mergedResults.sort((a, b) => b.score - a.score);
+      renderResults({ value, results: mergedResults });
       renderResults({ value, results })
     } catch (error) {
       renderResults({ value, errorMessage: error.message })
     }
   }
+}
+
+async function globalSearch(value) {
+  const params = new URLSearchParams({
+    q: value,
+    packages: "ecto,ecto_sql,db_connection,mint,ecto_ch",
+  });
+
+  const response = await fetch(
+    `https://hexdocs-sqlite-minimal.fly.dev/v0/search?${params.toString()}`
+  );
+
+  if (!response.ok) {
+    throw new Error("Global search network response was not OK");
+  }
+
+  const data = await response.json();
+  return data.results.map((d) => {
+    return {
+      ref: `https://hexdocs.pm/${d.package}/${d.ref}`,
+      score: d.rank,
+      type: d.type,
+      title: d.title,
+      package: d.package,
+      excerpts: d.excerpts,
+    };
+  });
 }
 
 function renderResults ({ value, results, errorMessage }) {

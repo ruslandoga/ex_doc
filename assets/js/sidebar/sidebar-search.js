@@ -37,6 +37,22 @@ export function focusSearchInput () {
   searchInput.focus()
 }
 
+function debounce(func, wait) {
+  let timeout;
+  return function () {
+    let context = this,
+      args = arguments;
+
+    let later = () => {
+      timeout = null;
+      func.apply(context, args);
+    };
+
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
 function addEventListeners () {
   const searchInput = qs(SEARCH_INPUT_SELECTOR)
 
@@ -55,9 +71,10 @@ function addEventListeners () {
     }
   })
 
-  searchInput.addEventListener('input', event => {
-    updateAutocompleteList(event.target.value)
-  })
+  searchInput.addEventListener(
+    'input',
+    debounce(() => updateAutocompleteList(searchInput.value), 50)
+  )
 
   searchInput.addEventListener('focus', event => {
     document.body.classList.add('search-focused')
